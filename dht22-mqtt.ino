@@ -5,39 +5,19 @@
 
 // esp8266 + dht22 + mqtt
 
-#define AIO_SERVER      "192.168.1.52"
-#define AIO_SERVERPORT  1883
-#define AIO_USERNAME    "harsa"
-#define AIO_KEY         "f52f8396a2cb44bb93b51059700ff0cc"
-
-
 #include <DHT.h>
 #include <ESP8266WiFi.h>
-#include <EEPROM.h>
-#include "Adafruit_MQTT.h"
-#include "Adafruit_MQTT_Client.h"
+#include <PubSubClient.h>
+#include <SPI.h>
 
 const char* ssid = "silakkaverkko";
 const char* password = "affa123456";
 
-const char TEMPERATURE_FEED[] PROGMEM = AIO_USERNAME "/feeds/temperature1";
-const char feedName[] = "sensor2";
-
 WiFiClient client;
 
-Adafruit_MQTT_Client mqtt(&client, AIO_SERVER, AIO_SERVERPORT, AIO_USERNAME, AIO_KEY);
-Adafruit_MQTT_Publish  tempFeed = Adafruit_MQTT_Publish(&mqtt, "sensors/sensor2.temp");
-Adafruit_MQTT_Publish  humFeed =  Adafruit_MQTT_Publish(&mqtt, "sensors/sensor2.humidity");
+PubSubClient mqtt(client);
 
-char* topic = "sensors/sensor2.temp";
 char* server = "192.168.1.52";
-char* hellotopic = "hello-topic";
-
-// Store the MQTT server, username, and password in flash memory.
-// This is required for using the Adafruit MQTT library.
-const char MQTT_SERVER[] PROGMEM    = AIO_SERVER;
-const char MQTT_USERNAME[] PROGMEM  = AIO_USERNAME;
-const char MQTT_PASSWORD[] PROGMEM  = AIO_KEY;
 
 #define DHTPIN 14     // what pin we're connected to
 #define DHTTYPE DHT22   // DHT 22  (AM2302)
@@ -46,24 +26,19 @@ const char MQTT_PASSWORD[] PROGMEM  = AIO_KEY;
 String clientName;
 DHT dht(DHTPIN, DHTTYPE, 15);
 //WiFiClient wifiClient;
-//PubSubClient client(server, 1883, callback, wifiClient);
 
 float oldH ;
 float oldT ;
 
 void setup() {
   Serial.begin(38400);
-  Serial.println("DHTxx test!");
+
   delay(20);
+  
+  mqtt.setServer(server, 1883);
 
-  EEPROM.put(0, "hello");
-
-
-  Serial.println();
-  Serial.println();
   Serial.print("Connecting to ");
   Serial.println(ssid);
-
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
@@ -71,7 +46,7 @@ void setup() {
     delay(500);
     Serial.print(".");
   }
-  Serial.println("");
+
   Serial.println("WiFi connected");
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
@@ -89,14 +64,37 @@ void setup() {
   dht.begin();
   oldH = -1;
   oldT = -1;
+  
+  
 }
-
+void reconnect() {
+  // Loop until we're reconnected
+  while (!mqtt.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    // Create a random client ID
+    String clientId = "ESP8266Client-";
+    clientId += String(random(0xffff), HEX);
+    // Attempt to connect
+    if (mqtt.connect(clientId.c_str())) {
+      Serial.println("connected");
+      // Once connected, publish an announcement...
+      //mqtt.publish("outTopic", "hello world");
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(mqtt.state());
+      Serial.println(" try again in 5 seconds");
+      // Wait 5 seconds before retrying
+      delay(5000);
+    }
+  }
+}
 void loop() {
   MQTT_connect();
-  
-  Adafruit_MQTT_Subscribe *subscription;
-  while ((subscription = mqtt.readSubscription(200))) {
+
+  if (!mqtt.connected()) {
+    reconnect();
   }
+  mqtt.loop();
 
   float h = dht.readHumidity();
   float t = dht.readTemperature();
@@ -141,12 +139,47 @@ void loop() {
     delay(1000);
 }
 
-
+const char rootPath[] = "sensors/";
+const char rootPath2[] = "sensors/";
 void sendData(float temp, float humidity) {
+  
+  char tempC[100] = "";
+  char humidityC[100] = "";
+
+  const char endHum[] = ".humidity";
+  const char endTemp[] = ".temp";
+  
+  
+  dtostrf(temp, 2, 2, tempC);
+  dtostrf(humidity, 2, 2, humidityC);
+
+  char cName[18] = "";
+  clientName.toCharArray(cName, 18);
+  char tempPath[40] = "sensors/";
+  //strcat(tempPath, rootPath);
+  strcat(tempPath, cName);
+  strcat(tempPath, endTemp);
+
+  char humidityPath[40] = "sensors/";
+
+  //strcat(humidityPath, rootPath2);
+  strcat(humidityPath, cName);
+  strcat(humidityPath, endHum);
+
+  Serial.print("sending data for ");
+  Serial.println(tempPath);
     if (mqtt.connected()){
         char p[50];
         //payload.toCharArray(p, 50);
         Serial.println("MQTT connected");
+          mqtt.publish(tempPath, tempC);
+          mqtt.publish(humidityPath, humidityC);
+          Serial.print("values saved: ");
+          Serial.println(tempC);
+          Serial.println(tempPath);
+          Serial.println(humidityPath);
+
+        /*
         if (tempFeed.publish(temp)){
           Serial.println("temp saved");
          } else {
@@ -155,9 +188,12 @@ void sendData(float temp, float humidity) {
         if (humFeed.publish(humidity)){
          Serial.println("humidity saved");
          }
+
+         */
       } else {
         Serial.println("MQTT not connected");
       }
+    
 }
 
 void MQTT_connect() {
@@ -170,11 +206,15 @@ void MQTT_connect() {
 
   Serial.print("Connecting to MQTT... ");
 
+  
   uint8_t retries = 3;
-  while ((ret = mqtt.connect()) != 0) { // connect will return 0 for connected
-       Serial.println(mqtt.connectErrorString(ret));
+  char cName[12];
+  clientName.toCharArray(cName, 12);
+
+  while (!mqtt.connected()) { // connect will return 0 for connected
        Serial.println("Retrying MQTT connection in 5 seconds...");
-       mqtt.disconnect();
+       mqtt.connect(cName);
+       //mqtt.disconnect();
        delay(5000);  // wait 5 seconds
        retries--;
        if (retries == 0) {
@@ -190,8 +230,8 @@ String macToStr(const uint8_t* mac)
   String result;
   for (int i = 0; i < 6; ++i) {
     result += String(mac[i], 16);
-    if (i < 5)
-      result += ':';
+    //if (i < 5)
+    //  result += ':';
   }
   return result;
 }
