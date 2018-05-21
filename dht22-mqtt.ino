@@ -23,7 +23,7 @@ WiFiClient client;
 
 PubSubClient mqtt(client);
 
-char* server = "192.168.1.52";
+char* server = "192.168.1.35";
 
 #define DHTPIN 14     // what pin we're connected to
 #define DHTTYPE DHT22   // DHT 22  (AM2302)
@@ -105,7 +105,7 @@ void loop() {
   float h = dht.readHumidity();
   float t = dht.readTemperature();
 
-  if (isnan(h) || isnan(t) {
+  if (isnan(h) || isnan(t)) {
     Serial.println("Failed to read from DHT sensor!");
     return;
   }
