@@ -5,6 +5,12 @@
 
 // esp8266 + dht22 + mqtt
 
+/**
+ * Connects to the wifi periodically, reads temp & humidity values 
+ * from dht-22 and sends them out with mqtt
+ */
+
+
 #include <DHT.h>
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
@@ -98,14 +104,11 @@ void loop() {
 
   float h = dht.readHumidity();
   float t = dht.readTemperature();
-  float f = dht.readTemperature(true);
 
-  if (isnan(h) || isnan(t) || isnan(f)) {
+  if (isnan(h) || isnan(t) {
     Serial.println("Failed to read from DHT sensor!");
     return;
   }
-
-  float hi = dht.computeHeatIndex(f, h);
 
   Serial.print("Humidity: ");
   Serial.print(h);
@@ -113,21 +116,13 @@ void loop() {
   Serial.print("Temperature: ");
   Serial.print(t);
   Serial.print(" *C ");
-  Serial.print(f);
-  Serial.print(" *F\t");
-  Serial.print("Heat index: ");
-  Serial.print(hi);
-  Serial.println(" *F");
 
   String payload = "";
   payload += t;
  
   if (t != oldT || h != oldH )
   {
-  
     sendData(t, h);
-
-    //tempFeed.publish(0);
     
     oldT = t;
     oldH = h;
@@ -149,20 +144,16 @@ void sendData(float temp, float humidity) {
   const char endHum[] = ".humidity";
   const char endTemp[] = ".temp";
   
-  
   dtostrf(temp, 2, 2, tempC);
   dtostrf(humidity, 2, 2, humidityC);
 
   char cName[18] = "";
   clientName.toCharArray(cName, 18);
   char tempPath[40] = "sensors/";
-  //strcat(tempPath, rootPath);
   strcat(tempPath, cName);
   strcat(tempPath, endTemp);
 
   char humidityPath[40] = "sensors/";
-
-  //strcat(humidityPath, rootPath2);
   strcat(humidityPath, cName);
   strcat(humidityPath, endHum);
 
@@ -170,7 +161,6 @@ void sendData(float temp, float humidity) {
   Serial.println(tempPath);
     if (mqtt.connected()){
         char p[50];
-        //payload.toCharArray(p, 50);
         Serial.println("MQTT connected");
           mqtt.publish(tempPath, tempC);
           mqtt.publish(humidityPath, humidityC);
@@ -178,18 +168,6 @@ void sendData(float temp, float humidity) {
           Serial.println(tempC);
           Serial.println(tempPath);
           Serial.println(humidityPath);
-
-        /*
-        if (tempFeed.publish(temp)){
-          Serial.println("temp saved");
-         } else {
-          Serial.println("temp not saved!");
-          }
-        if (humFeed.publish(humidity)){
-         Serial.println("humidity saved");
-         }
-
-         */
       } else {
         Serial.println("MQTT not connected");
       }
@@ -206,7 +184,6 @@ void MQTT_connect() {
 
   Serial.print("Connecting to MQTT... ");
 
-  
   uint8_t retries = 3;
   char cName[12];
   clientName.toCharArray(cName, 12);
